@@ -1,20 +1,27 @@
 local Players = game:GetService("Players")
 local UIS = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
+local CoreGui = game:GetService("CoreGui")
 
 local player = Players.LocalPlayer
 local mouse = player:GetMouse()
 
-local char = player.Character or player.CharacterAdded:Wait()
-
-player.CharacterAdded:Connect(function(c)
-	char = c
+-- Fallback Logic: Try CoreGui, then PlayerGui
+local targetParent
+local success, _ = pcall(function()
+	targetParent = CoreGui
 end)
 
--------------------------------------------------
--- STATES
--------------------------------------------------
+if not success or not targetParent then
+	targetParent = player:WaitForChild("PlayerGui")
+end
 
+local char = player.Character or player.CharacterAdded:Wait()
+player.CharacterAdded:Connect(function(c) char = c end)
+
+-------------------------------------------------
+-- STATES & GLOBALS
+-------------------------------------------------
 local flying = false
 local noclip = false
 local spectateTarget = nil
@@ -23,101 +30,173 @@ local flySpeed = 80
 local infJump = false
 local espEnabled = false
 
-local bv
-local bg
-local flyConnection
-
--- ESP Folder setup (Note: CoreGui requires an executor. Change to player.PlayerGui if testing in Studio)
-local espFolder = Instance.new("Folder", game.CoreGui)
+local bv, bg, flyConnection
+local espFolder = Instance.new("Folder", targetParent)
 espFolder.Name = "RogueESP"
 
 -------------------------------------------------
--- GUI SETUP
+-- MODERN UI SETUP
 -------------------------------------------------
+local gui = Instance.new("ScreenGui", targetParent)
+gui.Name = "RogueHub_V5"
+gui.ResetOnSpawn = false
 
-local gui = Instance.new("ScreenGui", game.CoreGui)
-gui.Name = "RogueHub"
+local mainFrame = Instance.new("Frame", gui)
+mainFrame.Size = UDim2.new(0, 250, 0, 500)
+mainFrame.Position = UDim2.new(0, 50, 0.5, -250)
+mainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+mainFrame.BorderSizePixel = 0
+mainFrame.Active = true
+mainFrame.Draggable = true
+mainFrame.ClipsDescendants = true
 
-local frame = Instance.new("Frame", gui)
-frame.Position = UDim2.new(0, 20, 0.5, -200)
-frame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-frame.Active = true
-frame.Draggable = true
+local corner = Instance.new("UICorner", mainFrame)
+corner.CornerRadius = UDim.new(0, 8)
 
-local title = Instance.new("TextLabel", frame)
-title.Size = UDim2.new(1, 0, 0, 30)
-title.Text = "Rogue Utility Hub"
+-- Header
+local header = Instance.new("Frame", mainFrame)
+header.Size = UDim2.new(1, 0, 0, 35)
+header.BackgroundTransparency = 1
+
+local title = Instance.new("TextLabel", header)
+title.Size = UDim2.new(1, -40, 1, 0)
+title.Position = UDim2.new(0, 12, 0, 0)
+title.Text = "ROGUE UTILITY HUB"
+title.Font = Enum.Font.GothamBold
+title.TextSize = 13
 title.BackgroundTransparency = 1
 title.TextColor3 = Color3.new(1, 1, 1)
+title.TextXAlignment = Enum.TextXAlignment.Left
+
+local minBtn = Instance.new("TextButton", header)
+minBtn.Size = UDim2.new(0, 35, 0, 35)
+minBtn.Position = UDim2.new(1, -35, 0, 0)
+minBtn.Text = "−"
+minBtn.TextColor3 = Color3.new(1, 1, 1)
+minBtn.BackgroundTransparency = 1
+minBtn.TextSize = 18
+
+-- Main Scrolling Container
+local container = Instance.new("ScrollingFrame", mainFrame)
+container.Size = UDim2.new(1, -10, 1, -45)
+container.Position = UDim2.new(0, 5, 0, 40)
+container.BackgroundTransparency = 1
+container.ScrollBarThickness = 2
+container.CanvasSize = UDim2.new(0, 0, 0, 0)
+container.AutomaticCanvasSize = Enum.AutomaticSize.Y
+
+local layout = Instance.new("UIListLayout", container)
+layout.Padding = UDim.new(0, 8)
+layout.SortOrder = Enum.SortOrder.LayoutOrder
+
+-- Minimizing Logic
+local isMinimized = false
+minBtn.MouseButton1Click:Connect(function()
+	isMinimized = not isMinimized
+	if isMinimized then
+		mainFrame:TweenSize(UDim2.new(0, 250, 0, 35), "Out", "Quad", 0.3, true)
+		minBtn.Text = "+"
+	else
+		mainFrame:TweenSize(UDim2.new(0, 250, 0, 500), "Out", "Quad", 0.3, true)
+		minBtn.Text = "−"
+	end
+end)
 
 -------------------------------------------------
--- BUTTON CREATOR
+-- UI COMPONENT CREATORS
 -------------------------------------------------
 
-local y = 40
+local function createSection(name, order)
+	local sectionTitle = Instance.new("TextLabel", container)
+	sectionTitle.Size = UDim2.new(1, 0, 0, 25)
+	sectionTitle.Text = name:upper()
+	sectionTitle.TextColor3 = Color3.fromRGB(120, 120, 120)
+	sectionTitle.Font = Enum.Font.GothamBold
+	sectionTitle.TextSize = 10
+	sectionTitle.BackgroundTransparency = 1
+	sectionTitle.LayoutOrder = order
+end
 
-local function makeButton(text, callback)
-	local b = Instance.new("TextButton", frame)
-	b.Size = UDim2.new(1, -10, 0, 30)
-	b.Position = UDim2.new(0, 5, 0, y)
-
+local function makeButton(text, callback, order)
+	local b = Instance.new("TextButton", container)
+	b.Size = UDim2.new(1, -8, 0, 30)
+	b.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 	b.Text = text
-	b.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-	b.TextColor3 = Color3.new(1, 1, 1)
-
+	b.TextColor3 = Color3.new(0.9, 0.9, 0.9)
+	b.Font = Enum.Font.Gotham
+	b.TextSize = 12
+	b.BorderSizePixel = 0
+	b.LayoutOrder = order
+	Instance.new("UICorner", b).CornerRadius = UDim.new(0, 4)
 	b.MouseButton1Click:Connect(callback)
+	return b
+end
 
-	y = y + 35
+local function makeStatLabel(text, order)
+	local l = Instance.new("TextLabel", container)
+	l.Size = UDim2.new(1, -10, 0, 18)
+	l.BackgroundTransparency = 1
+	l.TextColor3 = Color3.fromRGB(0, 200, 255)
+	l.Font = Enum.Font.Code
+	l.TextSize = 11
+	l.TextXAlignment = Enum.TextXAlignment.Left
+	l.Text = "  " .. text
+	l.LayoutOrder = order
+	return l
 end
 
 -------------------------------------------------
--- CORE FUNCTIONS
+-- LIVE STATS SECTION
 -------------------------------------------------
+createSection("Status Information", 0)
+local flyLabel = makeStatLabel("Fly Speed: " .. flySpeed, 1)
+local walkLabel = makeStatLabel("Walk Speed: 16", 2)
+local jumpLabel = makeStatLabel("Jump Power: 50", 3)
+local fovLabel = makeStatLabel("FOV: 70", 4)
 
--- Teleport
+RunService.RenderStepped:Connect(function()
+	if char and char:FindFirstChildOfClass("Humanoid") then
+		local hum = char:FindFirstChildOfClass("Humanoid")
+		walkLabel.Text = "Walk Speed: " .. math.floor(hum.WalkSpeed)
+		jumpLabel.Text = "Jump Power: " .. math.floor(hum.JumpPower)
+		flyLabel.Text = "Fly Speed: " .. flySpeed
+		fovLabel.Text = "FOV: " .. math.floor(workspace.CurrentCamera.FieldOfView)
+	end
+end)
+
+-------------------------------------------------
+-- FUNCTIONS
+-------------------------------------------------
 local function teleportToMouse()
 	if not mouse.Hit then return end
 	local root = char:FindFirstChild("HumanoidRootPart")
-	if not root then return end
-	root.CFrame = CFrame.new(mouse.Hit.Position + Vector3.new(0, 5, 0))
+	if root then root.CFrame = CFrame.new(mouse.Hit.Position + Vector3.new(0, 5, 0)) end
 end
 
--- Fly System
 local function startFly()
 	local root = char:FindFirstChild("HumanoidRootPart")
 	if not root then return end
-
-	bv = Instance.new("BodyVelocity")
+	bv = Instance.new("BodyVelocity", root)
 	bv.MaxForce = Vector3.new(9e9, 9e9, 9e9)
-	bv.Parent = root
-
-	bg = Instance.new("BodyGyro")
+	bg = Instance.new("BodyGyro", root)
 	bg.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
 	bg.P = 10000
-	bg.Parent = root
-
 	flyConnection = RunService.RenderStepped:Connect(function()
 		if not flying then return end
 		local cam = workspace.CurrentCamera
 		local dir = Vector3.zero
-
 		if UIS:IsKeyDown(Enum.KeyCode.W) then dir += cam.CFrame.LookVector end
 		if UIS:IsKeyDown(Enum.KeyCode.S) then dir -= cam.CFrame.LookVector end
 		if UIS:IsKeyDown(Enum.KeyCode.A) then dir -= cam.CFrame.RightVector end
 		if UIS:IsKeyDown(Enum.KeyCode.D) then dir += cam.CFrame.RightVector end
-
 		if dir.Magnitude > 0 then dir = dir.Unit end
-
 		bv.Velocity = dir * flySpeed
 		bg.CFrame = cam.CFrame
 	end)
 end
 
 local function stopFly()
-	if flyConnection then
-		flyConnection:Disconnect()
-		flyConnection = nil
-	end
+	if flyConnection then flyConnection:Disconnect() end
 	if bv then bv:Destroy() end
 	if bg then bg:Destroy() end
 end
@@ -127,226 +206,150 @@ local function toggleFly()
 	if flying then startFly() else stopFly() end
 end
 
--- ESP System
 local function updateESP()
 	espFolder:ClearAllChildren()
 	if not espEnabled then return end
-	
 	for _, plr in pairs(Players:GetPlayers()) do
 		if plr ~= player and plr.Character then
-			local highlight = Instance.new("Highlight")
-			highlight.Parent = espFolder
+			local highlight = Instance.new("Highlight", espFolder)
 			highlight.Adornee = plr.Character
 			highlight.FillColor = Color3.fromRGB(255, 0, 0)
-			highlight.FillTransparency = 0.5
-			highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
 		end
 	end
 end
 
-local function handlePlayerESP(plr)
-	plr.CharacterAdded:Connect(function()
-		task.wait(0.5)
-		if espEnabled then updateESP() end
-	end)
-end
+-------------------------------------------------
+-- SECTIONS
+-------------------------------------------------
+createSection("Movement Controls", 10)
+makeButton("Fly Toggle (Y)", toggleFly, 11)
+makeButton("Noclip Toggle (N)", function() noclip = not noclip end, 12)
+makeButton("Infinite Jump (G)", function() infJump = not infJump end, 13)
+makeButton("WalkSpeed +10 (V)", function() char.Humanoid.WalkSpeed += 10 end, 14)
+makeButton("Reset WalkSpeed (B)", function() char.Humanoid.WalkSpeed = 16 end, 15)
+makeButton("JumpPower +10 (K)", function() char.Humanoid.UseJumpPower = true char.Humanoid.JumpPower += 10 end, 16)
+makeButton("Reset Jump (L)", function() char.Humanoid.JumpPower = 50 end, 17)
 
-for _, plr in pairs(Players:GetPlayers()) do handlePlayerESP(plr) end
-Players.PlayerAdded:Connect(handlePlayerESP)
+createSection("Utilities & FOV", 20)
+makeButton("Teleport To Mouse (T)", teleportToMouse, 21)
+makeButton("Increase Fly Speed (U)", function() flySpeed += 10 end, 22)
+makeButton("Decrease Fly Speed (J)", function() flySpeed = math.max(10, flySpeed - 10) end, 23)
+makeButton("Increase FOV", function() workspace.CurrentCamera.FieldOfView = math.min(120, workspace.CurrentCamera.FieldOfView + 10) end, 24)
+makeButton("Reset FOV", function() workspace.CurrentCamera.FieldOfView = 70 end, 25)
+
+createSection("Visuals", 30)
+makeButton("Player ESP (E)", function() espEnabled = not espEnabled updateESP() end, 31)
+
+createSection("Spectate Players", 40)
+local specListBtn = makeButton("View Player List", function() end, 41)
+local specSubFrame = Instance.new("Frame", container)
+specSubFrame.Size = UDim2.new(1, -8, 0, 180)
+specSubFrame.BackgroundTransparency = 1
+specSubFrame.LayoutOrder = 42
+specSubFrame.Visible = false
+
+Instance.new("UIListLayout", specSubFrame).Padding = UDim.new(0, 5)
+
+local searchBox = Instance.new("TextBox", specSubFrame)
+searchBox.Size = UDim2.new(1, 0, 0, 25)
+searchBox.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+searchBox.TextColor3 = Color3.new(1, 1, 1)
+searchBox.PlaceholderText = "Search players..."
+searchBox.Font = Enum.Font.Gotham
+searchBox.TextSize = 12
+Instance.new("UICorner", searchBox).CornerRadius = UDim.new(0, 4)
+
+local spectateScroll = Instance.new("ScrollingFrame", specSubFrame)
+spectateScroll.Size = UDim2.new(1, 0, 1, -35)
+spectateScroll.BackgroundTransparency = 0.9
+spectateScroll.BackgroundColor3 = Color3.new(0,0,0)
+spectateScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+spectateScroll.CanvasSize = UDim2.new(0,0,0,0)
+Instance.new("UIListLayout", spectateScroll).Padding = UDim.new(0, 2)
+
+specListBtn.MouseButton1Click:Connect(function() specSubFrame.Visible = not specSubFrame.Visible end)
+makeButton("Attach To Back (P)", function() if spectateTarget then attachBack = not attachBack end end, 43)
 
 -------------------------------------------------
--- RUNSERVICE LOOPS
+-- SPECTATE & SEARCH LOGIC
 -------------------------------------------------
-
--- NoClip
-RunService.Stepped:Connect(function()
-	if noclip and char then
-		for _, v in pairs(char:GetDescendants()) do
-			if v:IsA("BasePart") then v.CanCollide = false end
-		end
-	end
-end)
-
--- Attach To Player
-RunService.RenderStepped:Connect(function()
-	if attachBack and spectateTarget and spectateTarget.Character then
-		local root = char:FindFirstChild("HumanoidRootPart")
-		local targetRoot = spectateTarget.Character:FindFirstChild("HumanoidRootPart")
-		if root and targetRoot then
-			root.CFrame = targetRoot.CFrame * CFrame.new(0, 0, 2)
-		end
-	end
-end)
-
--- Infinite Jump
-UIS.JumpRequest:Connect(function()
-	if infJump and char then
-		local hum = char:FindFirstChildOfClass("Humanoid")
-		if hum then hum:ChangeState(Enum.HumanoidStateType.Jumping) end
-	end
-end)
-
--------------------------------------------------
--- MENU BUTTONS
--------------------------------------------------
-
-makeButton("Fly (Y)", toggleFly)
-
-makeButton("NoClip (N)", function() noclip = not noclip end)
-
-makeButton("Teleport To Mouse (T)", teleportToMouse)
-
-makeButton("Increase Fly Speed (U)", function()
-	flySpeed = flySpeed + 10
-end)
-
-makeButton("Decrease Fly Speed (J)", function()
-	flySpeed = math.max(10, flySpeed - 10)
-end)
-
-makeButton("WalkSpeed + (V)", function()
-	local hum = char:FindFirstChildOfClass("Humanoid")
-	if hum then hum.WalkSpeed = hum.WalkSpeed + 10 end
-end)
-
-makeButton("Reset WalkSpeed (B)", function()
-	local hum = char:FindFirstChildOfClass("Humanoid")
-	if hum then hum.WalkSpeed = 16 end
-end)
-
-makeButton("Attach To Back (P)", function()
-	if spectateTarget then attachBack = not attachBack end
-end)
-
-makeButton("Inf Jump (I)", function() infJump = not infJump end)
-
-makeButton("Toggle ESP (E)", function()
-	espEnabled = not espEnabled
-	updateESP()
-end)
-
-makeButton("JumpPower + (K)", function()
-	local hum = char:FindFirstChildOfClass("Humanoid")
-	if hum then
-		hum.UseJumpPower = true
-		hum.JumpPower = hum.JumpPower + 10
-	end
-end)
-
-makeButton("Reset Jump (L)", function()
-	local hum = char:FindFirstChildOfClass("Humanoid")
-	if hum then 
-		hum.UseJumpPower = true
-		hum.JumpPower = 50 
-	end
-end)
-
-makeButton("Increase FOV", function()
-	workspace.CurrentCamera.FieldOfView = math.min(120, workspace.CurrentCamera.FieldOfView + 10)
-end)
-
-makeButton("Reset FOV", function()
-	workspace.CurrentCamera.FieldOfView = 70
-end)
-
--- Adjust frame size dynamically based on the number of buttons added, leaving 140px for spectate
-frame.Size = UDim2.new(0, 260, 0, y + 140)
-
--------------------------------------------------
--- SPECTATE MENU
--------------------------------------------------
-
-local spectateFrame = Instance.new("Frame", frame)
-spectateFrame.Size = UDim2.new(1, -10, 0, 120)
-spectateFrame.Position = UDim2.new(0, 5, 1, -130)
-spectateFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-
-local layout = Instance.new("UIListLayout", spectateFrame)
-
 local function refreshSpectate()
-	for _, v in pairs(spectateFrame:GetChildren()) do
-		if v:IsA("TextButton") then v:Destroy() end
-	end
-
+	for _, v in pairs(spectateScroll:GetChildren()) do if v:IsA("TextButton") then v:Destroy() end end
 	for _, plr in pairs(Players:GetPlayers()) do
 		if plr ~= player then
-			local b = Instance.new("TextButton", spectateFrame)
-			b.Size = UDim2.new(1, 0, 0, 25)
+			local b = Instance.new("TextButton", spectateScroll)
+			b.Size = UDim2.new(1, -5, 0, 22)
 			b.Text = plr.Name
-			b.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-			b.TextColor3 = Color3.new(1, 1, 1)
-
+			b.BackgroundColor3 = Color3.fromRGB(40,40,40)
+			b.TextColor3 = Color3.new(1,1,1)
+			b.Font = Enum.Font.Gotham
+			b.TextSize = 11
+			Instance.new("UICorner", b).CornerRadius = UDim.new(0,3)
 			b.MouseButton1Click:Connect(function()
 				if spectateTarget == plr then
 					spectateTarget = nil
-					workspace.CurrentCamera.CameraSubject = char:FindFirstChildOfClass("Humanoid")
+					workspace.CurrentCamera.CameraSubject = char.Humanoid
 				else
 					spectateTarget = plr
-					if plr.Character then
-						workspace.CurrentCamera.CameraSubject = plr.Character:FindFirstChildOfClass("Humanoid")
-					end
+					if plr.Character then workspace.CurrentCamera.CameraSubject = plr.Character.Humanoid end
 				end
 			end)
 		end
 	end
 end
 
+searchBox:GetPropertyChangedSignal("Text"):Connect(function()
+	local searchText = searchBox.Text:lower()
+	for _, child in pairs(spectateScroll:GetChildren()) do
+		if child:IsA("TextButton") then
+			child.Visible = searchText == "" or child.Text:lower():find(searchText)
+		end
+	end
+end)
+
 Players.PlayerAdded:Connect(refreshSpectate)
 Players.PlayerRemoving:Connect(refreshSpectate)
 refreshSpectate()
 
 -------------------------------------------------
--- HOTKEYS
+-- RUNSERVICE HANDLERS
 -------------------------------------------------
+RunService.Stepped:Connect(function()
+	if noclip and char then
+		for _, v in pairs(char:GetDescendants()) do if v:IsA("BasePart") then v.CanCollide = false end end
+	end
+end)
 
+RunService.RenderStepped:Connect(function()
+	if attachBack and spectateTarget and spectateTarget.Character then
+		local root = char:FindFirstChild("HumanoidRootPart")
+		local targetRoot = spectateTarget.Character:FindFirstChild("HumanoidRootPart")
+		if root and targetRoot then root.CFrame = targetRoot.CFrame * CFrame.new(0, 0, 2) end
+	end
+end)
+
+UIS.JumpRequest:Connect(function()
+	if infJump and char and char:FindFirstChildOfClass("Humanoid") then
+		char:FindFirstChildOfClass("Humanoid"):ChangeState(Enum.HumanoidStateType.Jumping)
+	end
+end)
+
+-------------------------------------------------
+-- UPDATED HOTKEYS
+-------------------------------------------------
 UIS.InputBegan:Connect(function(input, gp)
 	if gp then return end
-
-	-- Hide/Show Menu
-	if input.KeyCode == Enum.KeyCode.RightShift then
-		gui.Enabled = not gui.Enabled
-	end
-
-	-- Utilities
+	if input.KeyCode == Enum.KeyCode.RightShift then gui.Enabled = not gui.Enabled end
 	if input.KeyCode == Enum.KeyCode.Y then toggleFly() end
 	if input.KeyCode == Enum.KeyCode.N then noclip = not noclip end
 	if input.KeyCode == Enum.KeyCode.T then teleportToMouse() end
-	if input.KeyCode == Enum.KeyCode.I then infJump = not infJump end
-	if input.KeyCode == Enum.KeyCode.E then 
-		espEnabled = not espEnabled
-		updateESP()
-	end
-
-	-- Speed Adjustments
-	if input.KeyCode == Enum.KeyCode.U then flySpeed = flySpeed + 10 end
+	if input.KeyCode == Enum.KeyCode.G then infJump = not infJump end
+	if input.KeyCode == Enum.KeyCode.E then espEnabled = not espEnabled updateESP() end
+	if input.KeyCode == Enum.KeyCode.V then char.Humanoid.WalkSpeed += 10 end
+	if input.KeyCode == Enum.KeyCode.B then char.Humanoid.WalkSpeed = 16 end
+	if input.KeyCode == Enum.KeyCode.K then char.Humanoid.UseJumpPower = true char.Humanoid.JumpPower += 10 end
+	if input.KeyCode == Enum.KeyCode.L then char.Humanoid.JumpPower = 50 end
+	if input.KeyCode == Enum.KeyCode.P then attachBack = not attachBack end
+	if input.KeyCode == Enum.KeyCode.U then flySpeed += 10 end
 	if input.KeyCode == Enum.KeyCode.J then flySpeed = math.max(10, flySpeed - 10) end
-	if input.KeyCode == Enum.KeyCode.V then
-		local hum = char:FindFirstChildOfClass("Humanoid")
-		if hum then hum.WalkSpeed = hum.WalkSpeed + 10 end
-	end
-	if input.KeyCode == Enum.KeyCode.B then
-		local hum = char:FindFirstChildOfClass("Humanoid")
-		if hum then hum.WalkSpeed = 16 end
-	end
-
-	-- Jump Adjustments
-	if input.KeyCode == Enum.KeyCode.K then
-		local hum = char:FindFirstChildOfClass("Humanoid")
-		if hum then
-			hum.UseJumpPower = true
-			hum.JumpPower = hum.JumpPower + 10
-		end
-	end
-	if input.KeyCode == Enum.KeyCode.L then
-		local hum = char:FindFirstChildOfClass("Humanoid")
-		if hum then 
-			hum.UseJumpPower = true
-			hum.JumpPower = 50 
-		end
-	end
-
-	-- Attach
-	if input.KeyCode == Enum.KeyCode.P then
-		if spectateTarget then attachBack = not attachBack end
-	end
 end)
