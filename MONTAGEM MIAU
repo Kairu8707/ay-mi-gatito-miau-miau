@@ -39,22 +39,26 @@ local espFolder = Instance.new("Folder", targetParent)
 espFolder.Name = "RogueESP"
 
 -------------------------------------------------
--- MODERN UI SETUP
+-- DANGER SENSE SETTINGS & UI
 -------------------------------------------------
+local dangerSenseEnabled = false
+local dangerSoundEnabled = false
+local dangerDistance = 400 -- INCREASED RANGE
+local hasPlayedAlert = false -- Prevents sound spam
+
+-- Alert Sound Setup
+local alertSound = Instance.new("Sound", game:GetService("SoundService"))
+alertSound.SoundId = "rbxassetid://12222242" -- Notification beep
+alertSound.Volume = 0.5
+
 local gui = Instance.new("ScreenGui", targetParent)
 gui.Name = "RogueHub_V9"
 gui.ResetOnSpawn = false
 
--------------------------------------------------
--- DANGER SENSE UI
--------------------------------------------------
-local dangerSenseEnabled = false
-local dangerDistance = 75 -- Change this to increase/decrease the detection radius
-
 local dangerLabel = Instance.new("TextLabel", gui)
 dangerLabel.Name = "DangerSenseLabel"
-dangerLabel.Size = UDim2.new(0, 400, 0, 50)
-dangerLabel.Position = UDim2.new(0.5, -200, 0.1, 0) -- Near the top center of the screen
+dangerLabel.Size = UDim2.new(0, 450, 0, 50)
+dangerLabel.Position = UDim2.new(0.5, -225, 0.1, 0)
 dangerLabel.BackgroundTransparency = 1
 dangerLabel.Font = Enum.Font.GothamBold
 dangerLabel.TextSize = 22
@@ -304,11 +308,14 @@ dangerBtn.MouseButton1Click:Connect(function()
 	dangerSenseEnabled = not dangerSenseEnabled
 	dangerBtn.Text = "Danger Sense: " .. (dangerSenseEnabled and "ON" or "OFF")
 	dangerBtn.TextColor3 = dangerSenseEnabled and Color3.fromRGB(255, 50, 50) or Color3.new(0.9, 0.9, 0.9)
-	
-	if not dangerSenseEnabled then 
-		dangerLabel.Visible = false 
-		dangerLabel.Text = "" 
-	end
+	if not dangerSenseEnabled then dangerLabel.Visible = false end
+end)
+
+local soundBtn = makeButton("Danger Sound: OFF", function() end, 33)
+soundBtn.MouseButton1Click:Connect(function()
+	dangerSoundEnabled = not dangerSoundEnabled
+	soundBtn.Text = "Danger Sound: " .. (dangerSoundEnabled and "ON" or "OFF")
+	soundBtn.TextColor3 = dangerSoundEnabled and Color3.fromRGB(255, 200, 0) or Color3.new(0.9, 0.9, 0.9)
 end)
 
 createSection("Spectate Players", 40)
@@ -321,12 +328,12 @@ specSubFrame.Visible = false
 
 Instance.new("UIListLayout", specSubFrame).Padding = UDim.new(0, 5)
 
--- Cleaned up Search Box
+-- Search Box
 local searchBox = Instance.new("TextBox", specSubFrame)
 searchBox.Size = UDim2.new(1, 0, 0, 25)
 searchBox.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 searchBox.TextColor3 = Color3.new(1, 1, 1)
-searchBox.Text = "" -- FIXED: Removed default "TextBox" text
+searchBox.Text = ""
 searchBox.PlaceholderText = "Search players..."
 searchBox.Font = Enum.Font.Gotham
 searchBox.TextSize = 12
@@ -398,7 +405,7 @@ RunService.Stepped:Connect(function()
 end)
 
 RunService.RenderStepped:Connect(function()
-	-- Original Spectate Logic
+	-- Spectate Logic
 	if spectateTarget and spectateTarget.Character then
 		local root = char:FindFirstChild("HumanoidRootPart")
 		local targetRoot = spectateTarget.Character:FindFirstChild("HumanoidRootPart")
@@ -414,19 +421,17 @@ RunService.RenderStepped:Connect(function()
 			end
 		end
 	end
-	
-	-- New Danger Sense Logic
+
+	-- Danger Sense Logic
 	if dangerSenseEnabled and char and char:FindFirstChild("HumanoidRootPart") then
 		local myRoot = char.HumanoidRootPart
 		local closestPlayer = nil
 		local closestDist = dangerDistance
 
-		-- Loop through players to find the closest one within dangerDistance
 		for _, plr in pairs(Players:GetPlayers()) do
 			if plr ~= player and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
 				local targetRoot = plr.Character.HumanoidRootPart
 				local dist = (myRoot.Position - targetRoot.Position).Magnitude
-				
 				if dist < closestDist then
 					closestDist = dist
 					closestPlayer = plr
@@ -434,12 +439,16 @@ RunService.RenderStepped:Connect(function()
 			end
 		end
 
-		-- Update the label if someone is near
 		if closestPlayer then
 			dangerLabel.Text = "⚠️ DANGER: " .. closestPlayer.Name .. " is " .. math.floor(closestDist) .. " studs away! ⚠️"
 			dangerLabel.Visible = true
+			if dangerSoundEnabled and not hasPlayedAlert then
+				alertSound:Play()
+				hasPlayedAlert = true
+			end
 		else
 			dangerLabel.Visible = false
+			hasPlayedAlert = false
 		end
 	end
 end)
