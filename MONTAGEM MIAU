@@ -3,15 +3,20 @@ local UIS = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 local CoreGui = game:GetService("CoreGui")
 local VirtualUser = game:GetService("VirtualUser")
-local TweenService = game:GetService("TweenService")
+local Lighting = game:GetService("Lighting")
 
 local player = Players.LocalPlayer
 local mouse = player:GetMouse()
 
--- UI Parent Logic
+-- Fallback Logic: Try CoreGui, then PlayerGui
 local targetParent
-local success, _ = pcall(function() targetParent = CoreGui end)
-if not success or not targetParent then targetParent = player:WaitForChild("PlayerGui") end
+local success, _ = pcall(function()
+	targetParent = CoreGui
+end)
+
+if not success or not targetParent then
+	targetParent = player:WaitForChild("PlayerGui")
+end
 
 local char = player.Character or player.CharacterAdded:Wait()
 player.CharacterAdded:Connect(function(c) char = c end)
@@ -29,307 +34,530 @@ local espEnabled = false
 local healthEspEnabled = false 
 local rapidHeal = false 
 local autoClickerEnabled = false
-local clickDelay = 0.1
 local tracersEnabled = false
+local clickDelay = 0.1 
+local fullbrightEnabled = false 
+local hitboxEnabled = false 
+local antiAfkEnabled = true 
+
+local bv, bg, flyConnection
+local espFolder = Instance.new("Folder", targetParent)
+espFolder.Name = "RogueESP"
+
+local tracers = {} 
+
+-------------------------------------------------
+-- DANGER SENSE SETTINGS & UI
+-------------------------------------------------
 local dangerSenseEnabled = false
 local dangerSoundEnabled = false
 local dangerDistance = 150 
 local hasPlayedAlert = false 
 
-local bv, bg, flyConnection
-local espFolder = Instance.new("Folder", targetParent)
-espFolder.Name = "RogueESP"
-local tracers = {}
-
--- Alert Sound
 local alertSound = Instance.new("Sound", game:GetService("SoundService"))
 alertSound.SoundId = "rbxassetid://12222242" 
 alertSound.Volume = 0.5
 
--------------------------------------------------
--- PROFESSIONAL V12 UI DESIGN
--------------------------------------------------
 local gui = Instance.new("ScreenGui", targetParent)
-gui.Name = "RogueHub_V12"
+gui.Name = "RogueHub_V13_TracerFix"
 gui.ResetOnSpawn = false
 
--- Danger Label
 local dangerLabel = Instance.new("TextLabel", gui)
+dangerLabel.Name = "DangerSenseLabel"
 dangerLabel.Size = UDim2.new(0, 450, 0, 50)
-dangerLabel.Position = UDim2.new(0.5, -225, 0.05, 0)
+dangerLabel.Position = UDim2.new(0.5, -225, 0.1, 0)
 dangerLabel.BackgroundTransparency = 1
 dangerLabel.Font = Enum.Font.GothamBold
-dangerLabel.TextSize = 20
-dangerLabel.TextColor3 = Color3.fromRGB(255, 60, 60)
-dangerLabel.TextStrokeTransparency = 0.4
+dangerLabel.TextSize = 22
+dangerLabel.TextColor3 = Color3.fromRGB(255, 50, 50)
+dangerLabel.TextStrokeTransparency = 0
+dangerLabel.TextStrokeColor3 = Color3.new(0, 0, 0)
 dangerLabel.Text = ""
 dangerLabel.Visible = false
 
 local mainFrame = Instance.new("Frame", gui)
-mainFrame.Size = UDim2.new(0, 500, 0, 350)
-mainFrame.Position = UDim2.new(0.5, -250, 0.5, -175)
+mainFrame.Size = UDim2.new(0, 250, 0, 500)
+mainFrame.Position = UDim2.new(0, 50, 0.5, -250)
 mainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
 mainFrame.BorderSizePixel = 0
 mainFrame.Active = true
 mainFrame.Draggable = true
+mainFrame.ClipsDescendants = true
 
-local mainCorner = Instance.new("UICorner", mainFrame)
-mainCorner.CornerRadius = UDim.new(0, 10)
+local corner = Instance.new("UICorner", mainFrame)
+corner.CornerRadius = UDim.new(0, 8)
 
--- Header Bar
+-- Header
 local header = Instance.new("Frame", mainFrame)
-header.Size = UDim2.new(1, 0, 0, 40)
-header.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-header.BorderSizePixel = 0
+header.Size = UDim2.new(1, 0, 0, 35)
+header.BackgroundTransparency = 1
 
-local headerCorner = Instance.new("UICorner", header)
-headerCorner.CornerRadius = UDim.new(0, 10)
-
--- Title
 local title = Instance.new("TextLabel", header)
-title.Size = UDim2.new(1, -20, 1, 0)
-title.Position = UDim2.new(0, 15, 0, 0)
-title.Text = "ROGUE UTILITY HUB <font color='#00aaff'>V12</font>"
-title.RichText = true
+title.Size = UDim2.new(1, -40, 1, 0)
+title.Position = UDim2.new(0, 12, 0, 0)
+title.Text = "ROGUE UTILITY HUB V13"
 title.Font = Enum.Font.GothamBold
-title.TextColor3 = Color3.new(1,1,1)
-title.TextSize = 14
-title.TextXAlignment = Enum.TextXAlignment.Left
+title.TextSize = 13
 title.BackgroundTransparency = 1
+title.TextColor3 = Color3.new(1, 1, 1)
+title.TextXAlignment = Enum.TextXAlignment.Left
 
--- Sidebar
-local sidebar = Instance.new("Frame", mainFrame)
-sidebar.Position = UDim2.new(0, 0, 0, 40)
-sidebar.Size = UDim2.new(0, 130, 1, -40)
-sidebar.BackgroundColor3 = Color3.fromRGB(18, 18, 18)
-sidebar.BorderSizePixel = 0
+local minBtn = Instance.new("TextButton", header)
+minBtn.Size = UDim2.new(0, 35, 0, 35)
+minBtn.Position = UDim2.new(1, -35, 0, 0)
+minBtn.Text = "−"
+minBtn.TextColor3 = Color3.new(1, 1, 1)
+minBtn.BackgroundTransparency = 1
+minBtn.TextSize = 18
 
-local sidebarLayout = Instance.new("UIListLayout", sidebar)
-sidebarLayout.Padding = UDim.new(0, 2)
-sidebarLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+-- Main Scrolling Container
+local container = Instance.new("ScrollingFrame", mainFrame)
+container.Size = UDim2.new(1, -10, 1, -45)
+container.Position = UDim2.new(0, 5, 0, 40)
+container.BackgroundTransparency = 1
+container.ScrollBarThickness = 2
+container.CanvasSize = UDim2.new(0, 0, 0, 0)
+container.AutomaticCanvasSize = Enum.AutomaticSize.Y
 
--- Page Container
-local pageContainer = Instance.new("Frame", mainFrame)
-pageContainer.Position = UDim2.new(0, 140, 0, 50)
-pageContainer.Size = UDim2.new(1, -150, 1, -60)
-pageContainer.BackgroundTransparency = 1
+local layout = Instance.new("UIListLayout", container)
+layout.Padding = UDim.new(0, 8)
+layout.SortOrder = Enum.SortOrder.LayoutOrder
 
-local pages = {}
-local currentTab = nil
-
-local function createPage(name)
-    local pg = Instance.new("ScrollingFrame", pageContainer)
-    pg.Size = UDim2.new(1, 0, 1, 0)
-    pg.BackgroundTransparency = 1
-    pg.Visible = false
-    pg.ScrollBarThickness = 0
-    pg.CanvasSize = UDim2.new(0,0,0,0)
-    pg.AutomaticCanvasSize = Enum.AutomaticSize.Y
-    
-    local layout = Instance.new("UIListLayout", pg)
-    layout.Padding = UDim.new(0, 6)
-    pages[name] = pg
-    
-    local btn = Instance.new("TextButton", sidebar)
-    btn.Size = UDim2.new(1, 0, 0, 35)
-    btn.BackgroundColor3 = Color3.fromRGB(18, 18, 18)
-    btn.BorderSizePixel = 0
-    btn.Text = name
-    btn.Font = Enum.Font.GothamMedium
-    btn.TextColor3 = Color3.new(0.6, 0.6, 0.6)
-    btn.TextSize = 12
-    
-    btn.MouseButton1Click:Connect(function()
-        for _, p in pairs(pages) do p.Visible = false end
-        pg.Visible = true
-        -- Visual highlight logic could go here
-    end)
-    return pg
-end
-
--- Create Pages
-local combatPage = createPage("Combat")
-local movePage = createPage("Movement")
-local visualPage = createPage("Visuals")
-local miscPage = createPage("Misc")
-local specPage = createPage("Spectate")
-pages["Combat"].Visible = true
+-- Minimizing Logic
+local isMinimized = false
+minBtn.MouseButton1Click:Connect(function()
+	isMinimized = not isMinimized
+	if isMinimized then
+		mainFrame:TweenSize(UDim2.new(0, 250, 0, 35), "Out", "Quad", 0.3, true)
+		minBtn.Text = "+"
+	else
+		mainFrame:TweenSize(UDim2.new(0, 250, 0, 500), "Out", "Quad", 0.3, true)
+		minBtn.Text = "−"
+	end
+end)
 
 -------------------------------------------------
--- COMPONENT CREATORS
+-- UI COMPONENT CREATORS
 -------------------------------------------------
-local function makeButton(parent, text, callback)
-    local b = Instance.new("TextButton", parent)
-    b.Size = UDim2.new(1, -10, 0, 32)
-    b.BackgroundColor3 = Color3.fromRGB(28, 28, 28)
-    b.Text = text
-    b.TextColor3 = Color3.new(0.9, 0.9, 0.9)
-    b.Font = Enum.Font.Gotham
-    b.TextSize = 11
-    b.BorderSizePixel = 0
-    
-    local bc = Instance.new("UICorner", b)
-    bc.CornerRadius = UDim.new(0, 4)
-    
-    local stroke = Instance.new("UIStroke", b)
-    stroke.Color = Color3.fromRGB(40, 40, 40)
-    stroke.Thickness = 1
-    stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
-    b.MouseButton1Click:Connect(function()
-        callback()
-        -- Quick flash effect
-        b.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
-        task.wait(0.1)
-        b.BackgroundColor3 = Color3.fromRGB(28, 28, 28)
-    end)
-    return b
+local function createSection(name, order)
+	local sectionTitle = Instance.new("TextLabel", container)
+	sectionTitle.Size = UDim2.new(1, 0, 0, 25)
+	sectionTitle.Text = name:upper()
+	sectionTitle.TextColor3 = Color3.fromRGB(120, 120, 120)
+	sectionTitle.Font = Enum.Font.GothamBold
+	sectionTitle.TextSize = 10
+	sectionTitle.BackgroundTransparency = 1
+	sectionTitle.LayoutOrder = order
 end
 
-local function makeLabel(parent, text)
-    local l = Instance.new("TextLabel", parent)
-    l.Size = UDim2.new(1, 0, 0, 20)
-    l.BackgroundTransparency = 1
-    l.Text = "  " .. text:upper()
-    l.TextColor3 = Color3.fromRGB(100, 100, 100)
-    l.Font = Enum.Font.GothamBold
-    l.TextSize = 9
-    l.TextXAlignment = Enum.TextXAlignment.Left
-    return l
+local function makeButton(text, callback, order)
+	local b = Instance.new("TextButton", container)
+	b.Size = UDim2.new(1, -8, 0, 30)
+	b.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+	b.Text = text
+	b.TextColor3 = Color3.new(0.9, 0.9, 0.9)
+	b.Font = Enum.Font.Gotham
+	b.TextSize = 12
+	b.BorderSizePixel = 0
+	b.LayoutOrder = order
+	Instance.new("UICorner", b).CornerRadius = UDim.new(0, 4)
+	b.MouseButton1Click:Connect(callback)
+	return b
+end
+
+local function makeStatLabel(text, order)
+	local l = Instance.new("TextLabel", container)
+	l.Size = UDim2.new(1, -10, 0, 18)
+	l.BackgroundTransparency = 1
+	l.TextColor3 = Color3.fromRGB(0, 200, 255)
+	l.Font = Enum.Font.Code
+	l.TextSize = 11
+	l.TextXAlignment = Enum.TextXAlignment.Left
+	l.Text = "  " .. text
+	l.LayoutOrder = order
+	return l
 end
 
 -------------------------------------------------
--- FEATURE LOGIC (PRESERVED)
+-- LIVE STATS SECTION
 -------------------------------------------------
+createSection("Status Information", 0)
+local flyLabel = makeStatLabel("Fly Speed: " .. flySpeed, 1)
+local walkLabel = makeStatLabel("Walk Speed: 16", 2)
+local clickSpeedLabel = makeStatLabel("Click Delay: " .. clickDelay .. "s", 3)
+local fovLabel = makeStatLabel("FOV: 70", 4)
+
+RunService.RenderStepped:Connect(function()
+	if char and char:FindFirstChildOfClass("Humanoid") then
+		local hum = char:FindFirstChildOfClass("Humanoid")
+		walkLabel.Text = "Walk Speed: " .. math.floor(hum.WalkSpeed)
+		flyLabel.Text = "Fly Speed: " .. flySpeed
+		clickSpeedLabel.Text = "Click Delay: " .. string.format("%.2f", clickDelay) .. "s"
+		fovLabel.Text = "FOV: " .. math.floor(workspace.CurrentCamera.FieldOfView)
+	end
+end)
+
+-------------------------------------------------
+-- FUNCTIONS & LOOPS
+-------------------------------------------------
+local function teleportToMouse()
+	if not mouse.Hit then return end
+	local root = char:FindFirstChild("HumanoidRootPart")
+	if root then root.CFrame = CFrame.new(mouse.Hit.Position + Vector3.new(0, 5, 0)) end
+end
+
+local function fullHealth()
+	if char and char:FindFirstChildOfClass("Humanoid") then
+		local hum = char:FindFirstChildOfClass("Humanoid")
+		hum.Health = hum.MaxHealth
+	end
+end
+
+local function resetAttachments(except)
+	attachBack = (except == "back")
+	attachFront = (except == "front")
+	attachLeft = (except == "left")
+	attachRight = (except == "right")
+end
+
+-- ANTI-AFK
+player.Idled:Connect(function()
+    if antiAfkEnabled then
+        VirtualUser:Button2Down(Vector2.new(0,0),workspace.CurrentCamera.CFrame)
+        task.wait(1)
+        VirtualUser:Button2Up(Vector2.new(0,0),workspace.CurrentCamera.CFrame)
+    end
+end)
+
+-- FULLBRIGHT
+RunService.RenderStepped:Connect(function()
+    if fullbrightEnabled then
+        Lighting.Brightness = 2
+        Lighting.ClockTime = 14
+        Lighting.FogEnd = 100000
+        Lighting.GlobalShadows = false
+        Lighting.OutdoorAmbient = Color3.fromRGB(128, 128, 128)
+    end
+end)
+
+-- HITBOX EXPANDER
+task.spawn(function()
+    while task.wait(1) do
+        if hitboxEnabled then
+            for _, plr in pairs(Players:GetPlayers()) do
+                if plr ~= player and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
+                    plr.Character.HumanoidRootPart.Size = Vector3.new(10, 10, 10)
+                    plr.Character.HumanoidRootPart.Transparency = 0.7
+                    plr.Character.HumanoidRootPart.CanCollide = false
+                end
+            end
+        end
+    end
+end)
+
+-- RAPID HEAL
+task.spawn(function()
+	while true do
+		if rapidHeal and char and char:FindFirstChildOfClass("Humanoid") then
+			local hum = char:FindFirstChildOfClass("Humanoid")
+			if hum.Health < hum.MaxHealth then
+				hum.Health = math.min(hum.MaxHealth, hum.Health + 3)
+			end
+		end
+		task.wait(0.05)
+	end
+end)
+
+-- AUTO CLICKER
+task.spawn(function()
+	while true do
+		if autoClickerEnabled then
+			VirtualUser:CaptureController()
+			VirtualUser:ClickButton1(Vector2.new(0,0))
+		end
+		task.wait(clickDelay)
+	end
+end)
+
 local function startFly()
-    local root = char:FindFirstChild("HumanoidRootPart")
-    if not root then return end
-    bv = Instance.new("BodyVelocity", root)
-    bv.MaxForce = Vector3.new(9e9, 9e9, 9e9)
-    bg = Instance.new("BodyGyro", root)
-    bg.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
-    bg.P = 10000
-    flyConnection = RunService.RenderStepped:Connect(function()
-        if not flying then return end
-        local cam = workspace.CurrentCamera
-        local dir = Vector3.zero
-        if UIS:IsKeyDown(Enum.KeyCode.W) then dir += cam.CFrame.LookVector end
-        if UIS:IsKeyDown(Enum.KeyCode.S) then dir -= cam.CFrame.LookVector end
-        if UIS:IsKeyDown(Enum.KeyCode.A) then dir -= cam.CFrame.RightVector end
-        if UIS:IsKeyDown(Enum.KeyCode.D) then dir += cam.CFrame.RightVector end
-        if dir.Magnitude > 0 then dir = dir.Unit end
-        bv.Velocity = dir * flySpeed
-        bg.CFrame = cam.CFrame
-    end)
+	local root = char:FindFirstChild("HumanoidRootPart")
+	if not root then return end
+	bv = Instance.new("BodyVelocity", root)
+	bv.MaxForce = Vector3.new(9e9, 9e9, 9e9)
+	bg = Instance.new("BodyGyro", root)
+	bg.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
+	bg.P = 10000
+	flyConnection = RunService.RenderStepped:Connect(function()
+		if not flying then return end
+		local cam = workspace.CurrentCamera
+		local dir = Vector3.zero
+		if UIS:IsKeyDown(Enum.KeyCode.W) then dir += cam.CFrame.LookVector end
+		if UIS:IsKeyDown(Enum.KeyCode.S) then dir -= cam.CFrame.LookVector end
+		if UIS:IsKeyDown(Enum.KeyCode.A) then dir -= cam.CFrame.RightVector end
+		if UIS:IsKeyDown(Enum.KeyCode.D) then dir += cam.CFrame.RightVector end
+		if dir.Magnitude > 0 then dir = dir.Unit end
+		bv.Velocity = dir * flySpeed
+		bg.CFrame = cam.CFrame
+	end)
 end
 
 local function stopFly()
-    if flyConnection then flyConnection:Disconnect() end
-    if bv then bv:Destroy() end
-    if bg then bg:Destroy() end
+	if flyConnection then flyConnection:Disconnect() end
+	if bv then bv:Destroy() end
+	if bg then bg:Destroy() end
 end
 
 local function toggleFly()
-    flying = not flying
-    if flying then startFly() else stopFly() end
+	flying = not flying
+	if flying then startFly() else stopFly() end
 end
 
 local function updateESP()
-    espFolder:ClearAllChildren()
-    if not espEnabled then return end
-    for _, plr in pairs(Players:GetPlayers()) do
-        if plr ~= player and plr.Character then
-            local highlight = Instance.new("Highlight", espFolder)
-            highlight.Adornee = plr.Character
-            highlight.FillColor = Color3.fromRGB(255, 0, 0)
-        end
-    end
+	espFolder:ClearAllChildren()
+	if not espEnabled then return end
+	for _, plr in pairs(Players:GetPlayers()) do
+		if plr ~= player and plr.Character then
+			local highlight = Instance.new("Highlight", espFolder)
+			highlight.Adornee = plr.Character
+			highlight.FillColor = Color3.fromRGB(255, 0, 0)
+		end
+	end
+end
+
+local function updateHealthESP()
+	for _, plr in pairs(Players:GetPlayers()) do
+		if plr ~= player and plr.Character and plr.Character:FindFirstChild("Head") then
+			local head = plr.Character.Head
+			local existing = head:FindFirstChild("HealthBarGui")
+			if healthEspEnabled then
+				if not existing then
+					local bbg = Instance.new("BillboardGui", head)
+					bbg.Name = "HealthBarGui"
+					bbg.Size = UDim2.new(0, 100, 0, 20)
+					bbg.StudsOffset = Vector3.new(0, 2, 0)
+					bbg.AlwaysOnTop = true
+					local label = Instance.new("TextLabel", bbg)
+					label.BackgroundTransparency = 1
+					label.Size = UDim2.new(1, 0, 1, 0)
+					label.Font = Enum.Font.GothamBold
+					label.TextSize = 12
+				end
+				local label = head.HealthBarGui.TextLabel
+				local hum = plr.Character:FindFirstChildOfClass("Humanoid")
+				if hum then
+					label.Text = math.floor(hum.Health) .. " HP"
+					label.TextColor3 = hum.Health > (hum.MaxHealth * 0.7) and Color3.fromRGB(0, 255, 100) or Color3.fromRGB(255, 50, 50)
+				end
+			elseif existing then existing:Destroy() end
+		end
+	end
 end
 
 -------------------------------------------------
--- POPULATING TABS
+-- UI SECTIONS
 -------------------------------------------------
-
--- COMBAT
-makeLabel(combatPage, "Auto-Clicker Settings")
-local acBtn = makeButton(combatPage, "Toggle Auto-Clicker", function()
-    autoClickerEnabled = not autoClickerEnabled
+createSection("Combat Utilities", 5) 
+local acBtn = makeButton("Auto-Clicker: OFF", function() end, 6)
+acBtn.MouseButton1Click:Connect(function()
+	autoClickerEnabled = not autoClickerEnabled
+	acBtn.Text = "Auto-Clicker: " .. (autoClickerEnabled and "ON" or "OFF")
+	acBtn.TextColor3 = autoClickerEnabled and Color3.fromRGB(255, 100, 0) or Color3.new(0.9, 0.9, 0.9)
 end)
-makeButton(combatPage, "Increase Speed (-0.05s)", function() clickDelay = math.max(0.01, clickDelay - 0.05) end)
-makeButton(combatPage, "Decrease Speed (+0.05s)", function() clickDelay = clickDelay + 0.05 end)
 
--- MOVEMENT
-makeLabel(movePage, "Essential Movement")
-makeButton(movePage, "Toggle Fly (Y)", toggleFly)
-makeButton(movePage, "Toggle Noclip (N)", function() noclip = not noclip end)
-makeButton(movePage, "Toggle Inf Jump (G)", function() infJump = not infJump end)
-makeButton(movePage, "WalkSpeed +10", function() char.Humanoid.WalkSpeed += 10 end)
-makeButton(movePage, "Reset Movement", function() char.Humanoid.WalkSpeed = 16 char.Humanoid.JumpPower = 50 end)
+makeButton("Click Delay: -0.05s", function() clickDelay = math.max(0.01, clickDelay - 0.05) end, 6.1)
+makeButton("Click Delay: +0.05s", function() clickDelay = clickDelay + 0.05 end, 6.2)
 
--- VISUALS
-makeLabel(visualPage, "Enhanced Awareness")
-makeButton(visualPage, "Toggle Highlight ESP", function() espEnabled = not espEnabled updateESP() end)
-makeButton(visualPage, "Toggle Health Text", function() healthEspEnabled = not healthEspEnabled end)
-makeButton(visualPage, "Toggle Snaplines", function() tracersEnabled = not tracersEnabled end)
-makeButton(visualPage, "Toggle Danger Sense", function() dangerSenseEnabled = not dangerSenseEnabled end)
+local hbBtn = makeButton("Hitbox Expander: OFF", function() end, 7)
+hbBtn.MouseButton1Click:Connect(function()
+    hitboxEnabled = not hitboxEnabled
+    hbBtn.Text = "Hitbox Expander: " .. (hitboxEnabled and "ON" or "OFF")
+    hbBtn.TextColor3 = hitboxEnabled and Color3.fromRGB(255, 0, 0) or Color3.new(0.9, 0.9, 0.9)
+end)
 
--- MISC
-makeLabel(miscPage, "Character Utilities")
-makeButton(miscPage, "Instant Heal (H)", function() char.Humanoid.Health = char.Humanoid.MaxHealth end)
-makeButton(miscPage, "Toggle Rapid Heal", function() rapidHeal = not rapidHeal end)
-makeButton(miscPage, "Click TP (T)", function() char.HumanoidRootPart.CFrame = CFrame.new(mouse.Hit.Position + Vector3.new(0,5,0)) end)
+createSection("Movement Controls", 10)
+makeButton("Fly Toggle (Y)", toggleFly, 11)
+makeButton("Noclip Toggle (N)", function() noclip = not noclip end, 12)
+makeButton("Infinite Jump (G)", function() infJump = not infJump end, 13)
+makeButton("WalkSpeed +10 (V)", function() char.Humanoid.WalkSpeed += 10 end, 14)
+makeButton("Reset WalkSpeed (B)", function() char.Humanoid.WalkSpeed = 16 end, 15)
 
--- SPECTATE
-local searchBox = Instance.new("TextBox", specPage)
-searchBox.Size = UDim2.new(1, -10, 0, 30)
-searchBox.PlaceholderText = "Search Player..."
-searchBox.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-searchBox.TextColor3 = Color3.new(1,1,1)
+createSection("Character & Misc", 18)
+makeButton("Refill Health (H)", fullHealth, 19)
+local rhBtn = makeButton("Rapid Heal: OFF", function() end, 19.5)
+rhBtn.MouseButton1Click:Connect(function()
+	rapidHeal = not rapidHeal
+	rhBtn.Text = "Rapid Heal: " .. (rapidHeal and "ON" or "OFF")
+end)
+
+createSection("Utilities & FOV", 20)
+makeButton("Teleport To Mouse (T)", teleportToMouse, 21)
+makeButton("Increase Fly Speed (U)", function() flySpeed += 10 end, 22)
+makeButton("Decrease Fly Speed (J)", function() flySpeed = math.max(10, flySpeed - 10) end, 23)
+makeButton("Increase FOV", function() workspace.CurrentCamera.FieldOfView = math.min(120, workspace.CurrentCamera.FieldOfView + 10) end, 24)
+makeButton("Reset FOV", function() workspace.CurrentCamera.FieldOfView = 70 end, 25)
+
+createSection("Visuals", 30)
+makeButton("Player ESP (E)", function() espEnabled = not espEnabled updateESP() end, 31)
+
+local healthEspBtn = makeButton("Health ESP: OFF", function() end, 31.5)
+healthEspBtn.MouseButton1Click:Connect(function()
+	healthEspEnabled = not healthEspEnabled
+	healthEspBtn.Text = "Health ESP: " .. (healthEspEnabled and "ON" or "OFF")
+end)
+
+local tracerBtn = makeButton("Snapline Tracers: OFF", function() end, 31.6)
+tracerBtn.MouseButton1Click:Connect(function()
+	tracersEnabled = not tracersEnabled
+	tracerBtn.Text = "Snapline Tracers: " .. (tracersEnabled and "ON" or "OFF")
+	if not tracersEnabled then
+		for _, v in pairs(tracers) do v.Visible = false end
+	end
+end)
+
+local fbBtn = makeButton("Fullbright: OFF", function() end, 31.7)
+fbBtn.MouseButton1Click:Connect(function()
+    fullbrightEnabled = not fullbrightEnabled
+    fbBtn.Text = "Fullbright: " .. (fullbrightEnabled and "ON" or "OFF")
+    if not fullbrightEnabled then Lighting.Brightness = 1 Lighting.GlobalShadows = true end
+end)
+
+local dsBtn = makeButton("Danger Sense: OFF", function() end, 31.8)
+dsBtn.MouseButton1Click:Connect(function()
+	dangerSenseEnabled = not dangerSenseEnabled
+	dsBtn.Text = "Danger Sense: " .. (dangerSenseEnabled and "ON" or "OFF")
+	if not dangerSenseEnabled then dangerLabel.Visible = false end
+end)
+
+createSection("Spectate Players", 40)
+local specListBtn = makeButton("View Player List", function() end, 41)
+local specSubFrame = Instance.new("Frame", container)
+specSubFrame.Size = UDim2.new(1, -8, 0, 180)
+specSubFrame.BackgroundTransparency = 1
+specSubFrame.LayoutOrder = 42
+specSubFrame.Visible = false
+Instance.new("UIListLayout", specSubFrame).Padding = UDim.new(0, 5)
+
+local searchBox = Instance.new("TextBox", specSubFrame)
+searchBox.Size = UDim2.new(1, 0, 0, 25)
+searchBox.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+searchBox.TextColor3 = Color3.new(1, 1, 1)
+searchBox.PlaceholderText = "Search players..."
 searchBox.Font = Enum.Font.Gotham
-searchBox.TextSize = 11
+searchBox.TextSize = 12
 Instance.new("UICorner", searchBox).CornerRadius = UDim.new(0, 4)
 
-local specScroll = Instance.new("ScrollingFrame", specPage)
-specScroll.Size = UDim2.new(1, 0, 1, -40)
-specScroll.BackgroundTransparency = 1
-specScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-Instance.new("UIListLayout", specScroll).Padding = UDim.new(0, 4)
+local spectateScroll = Instance.new("ScrollingFrame", specSubFrame)
+spectateScroll.Size = UDim2.new(1, 0, 1, -35)
+spectateScroll.BackgroundTransparency = 0.9
+spectateScroll.BackgroundColor3 = Color3.new(0,0,0)
+spectateScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+Instance.new("UIListLayout", spectateScroll).Padding = UDim.new(0, 2)
 
-local function refreshSpec()
-    for _, v in pairs(specScroll:GetChildren()) do if v:IsA("TextButton") then v:Destroy() end end
-    for _, plr in pairs(Players:GetPlayers()) do
-        if plr ~= player then
-            local b = makeButton(specScroll, plr.Name, function()
-                spectateTarget = plr
-                workspace.CurrentCamera.CameraSubject = plr.Character.Humanoid
-            end)
-            b.Size = UDim2.new(1, -10, 0, 25)
-        end
-    end
+specListBtn.MouseButton1Click:Connect(function() specSubFrame.Visible = not specSubFrame.Visible end)
+
+makeButton("Stop Spectating", function() 
+    spectateTarget = nil 
+    workspace.CurrentCamera.CameraSubject = char.Humanoid 
+end, 42.1)
+
+makeButton("Attach To Back (P)", function() if spectateTarget then resetAttachments("back") end end, 43)
+makeButton("Attach To Front", function() if spectateTarget then resetAttachments("front") end end, 44)
+makeButton("Attach Left", function() if spectateTarget then resetAttachments("left") end end, 45)
+makeButton("Attach Right", function() if spectateTarget then resetAttachments("right") end end, 46)
+
+createSection("About", 50)
+makeStatLabel("Hub Version: V13", 51)
+makeStatLabel("Status: Active", 52)
+
+-------------------------------------------------
+-- REFRESH & SEARCH
+-------------------------------------------------
+local function refreshSpectate()
+	for _, v in pairs(spectateScroll:GetChildren()) do if v:IsA("TextButton") then v:Destroy() end end
+	for _, plr in pairs(Players:GetPlayers()) do
+		if plr ~= player then
+			local b = Instance.new("TextButton", spectateScroll)
+			b.Size = UDim2.new(1, -5, 0, 22)
+			b.Text = plr.Name
+			b.BackgroundColor3 = Color3.fromRGB(40,40,40)
+			b.TextColor3 = Color3.new(1,1,1)
+			b.Font = Enum.Font.Gotham
+			b.TextSize = 11
+			Instance.new("UICorner", b).CornerRadius = UDim.new(0,3)
+			b.MouseButton1Click:Connect(function()
+				spectateTarget = plr
+				if plr.Character then workspace.CurrentCamera.CameraSubject = plr.Character.Humanoid end
+			end)
+		end
+	end
 end
-refreshSpec()
-makeButton(specPage, "Stop Spectating", function() spectateTarget = nil workspace.CurrentCamera.CameraSubject = char.Humanoid end)
 
--------------------------------------------------
--- BACKGROUND LOOPS
--------------------------------------------------
-task.spawn(function()
-    while true do
-        if autoClickerEnabled then
-            VirtualUser:CaptureController()
-            VirtualUser:ClickButton1(Vector2.new(0,0))
-        end
-        task.wait(clickDelay)
-    end
+searchBox:GetPropertyChangedSignal("Text"):Connect(function()
+	local searchText = searchBox.Text:lower()
+	for _, child in pairs(spectateScroll:GetChildren()) do
+		if child:IsA("TextButton") then
+			child.Visible = searchText == "" or child.Text:lower():find(searchText)
+		end
+	end
 end)
 
+Players.PlayerAdded:Connect(refreshSpectate)
+Players.PlayerRemoving:Connect(refreshSpectate)
+refreshSpectate()
+
+-------------------------------------------------
+-- MAIN RUNSERVICE HANDLER
+-------------------------------------------------
 RunService.RenderStepped:Connect(function()
-    if noclip and char then
-        for _, v in pairs(char:GetDescendants()) do if v:IsA("BasePart") then v.CanCollide = false end end
-    end
-    
-    -- Danger Sense
-    if dangerSenseEnabled and char:FindFirstChild("HumanoidRootPart") then
+	-- Spectate Attachments
+	if spectateTarget and spectateTarget.Character then
+		local root = char:FindFirstChild("HumanoidRootPart")
+		local targetRoot = spectateTarget.Character:FindFirstChild("HumanoidRootPart")
+		if root and targetRoot then
+			if attachBack then root.CFrame = targetRoot.CFrame * CFrame.new(0, 0, 3)
+			elseif attachFront then root.CFrame = targetRoot.CFrame * CFrame.new(0, 0, -3)
+			elseif attachLeft then root.CFrame = targetRoot.CFrame * CFrame.new(-4, 0, 0)
+			elseif attachRight then root.CFrame = targetRoot.CFrame * CFrame.new(4, 0, 0) end
+		end
+	end
+	
+	if healthEspEnabled then updateHealthESP() end
+
+	-- TRACERS LOGIC
+	for _, plr in pairs(Players:GetPlayers()) do
+		if plr ~= player then
+			if tracersEnabled and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
+				if not tracers[plr.Name] then
+					tracers[plr.Name] = Drawing.new("Line")
+					tracers[plr.Name].Thickness = 1
+					tracers[plr.Name].Color = Color3.new(1, 1, 1)
+					tracers[plr.Name].Transparency = 0.6
+				end
+				local line = tracers[plr.Name]
+				local vector, onScreen = workspace.CurrentCamera:WorldToViewportPoint(plr.Character.HumanoidRootPart.Position)
+				if onScreen then
+					line.From = Vector2.new(workspace.CurrentCamera.ViewportSize.X / 2, workspace.CurrentCamera.ViewportSize.Y)
+					line.To = Vector2.new(vector.X, vector.Y)
+					line.Visible = true
+				else
+					line.Visible = false
+				end
+			else
+				if tracers[plr.Name] then tracers[plr.Name].Visible = false end
+			end
+		end
+	end
+	
+	for name, line in pairs(tracers) do
+		if not Players:FindFirstChild(name) then
+			line:Remove()
+			tracers[name] = nil
+		end
+	end
+
+    -- Danger Sense Logic
+    if dangerSenseEnabled and char and char:FindFirstChild("HumanoidRootPart") then
         local closestDist = dangerDistance
         local closestPlayer = nil
         for _, plr in pairs(Players:GetPlayers()) do
@@ -342,32 +570,56 @@ RunService.RenderStepped:Connect(function()
             dangerLabel.Text = "⚠️ DANGER: " .. closestPlayer.Name .. " [" .. math.floor(closestDist) .. " STUDS]"
             dangerLabel.Visible = true
             if dangerSoundEnabled and not hasPlayedAlert then alertSound:Play() hasPlayedAlert = true end
-        else
-            dangerLabel.Visible = false
-            hasPlayedAlert = false
-        end
-    end
-
-    -- Tracers
-    for _, plr in pairs(Players:GetPlayers()) do
-        if plr ~= player and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
-            if tracersEnabled then
-                if not tracers[plr.Name] then tracers[plr.Name] = Drawing.new("Line") tracers[plr.Name].Thickness = 1 tracers[plr.Name].Color = Color3.new(0, 0.6, 1) end
-                local vector, onScreen = workspace.CurrentCamera:WorldToViewportPoint(plr.Character.HumanoidRootPart.Position)
-                if onScreen then
-                    tracers[plr.Name].From = Vector2.new(workspace.CurrentCamera.ViewportSize.X/2, workspace.CurrentCamera.ViewportSize.Y)
-                    tracers[plr.Name].To = Vector2.new(vector.X, vector.Y)
-                    tracers[plr.Name].Visible = true
-                else tracers[plr.Name].Visible = false end
-            elseif tracers[plr.Name] then tracers[plr.Name].Visible = false end
-        end
+        else dangerLabel.Visible = false hasPlayedAlert = false end
     end
 end)
 
+-- NOCLIP LOGIC FIX
+RunService.Stepped:Connect(function()
+	if noclip and char then
+		for _, part in pairs(char:GetDescendants()) do
+			if part:IsA("BasePart") then
+				part.CanCollide = false
+			end
+		end
+	end
+end)
+
+UIS.JumpRequest:Connect(function()
+	if infJump and char and char:FindFirstChildOfClass("Humanoid") then
+		char:FindFirstChildOfClass("Humanoid"):ChangeState(Enum.HumanoidStateType.Jumping)
+	end
+end)
+
+-------------------------------------------------
+-- HOTKEYS SECTION (FIXED & COMPLETED)
+-------------------------------------------------
 UIS.InputBegan:Connect(function(input, gp)
-    if gp then return end
-    if input.KeyCode == Enum.KeyCode.RightShift then gui.Enabled = not gui.Enabled end
-    if input.KeyCode == Enum.KeyCode.Y then toggleFly() end
-    if input.KeyCode == Enum.KeyCode.N then noclip = not noclip end
-    if input.KeyCode == Enum.KeyCode.G then infJump = not infJump end
+	if gp then return end
+	
+	-- Menu Toggle
+	if input.KeyCode == Enum.KeyCode.RightShift then gui.Enabled = not gui.Enabled end
+	
+	-- Movement Keys
+	if input.KeyCode == Enum.KeyCode.Y then toggleFly() end
+	if input.KeyCode == Enum.KeyCode.N then noclip = not noclip end
+	if input.KeyCode == Enum.KeyCode.G then infJump = not infJump end
+	if input.KeyCode == Enum.KeyCode.V then if char and char:FindFirstChild("Humanoid") then char.Humanoid.WalkSpeed += 10 end end
+	if input.KeyCode == Enum.KeyCode.B then if char and char:FindFirstChild("Humanoid") then char.Humanoid.WalkSpeed = 16 end end
+	if input.KeyCode == Enum.KeyCode.K then if char and char:FindFirstChild("Humanoid") then char.Humanoid.UseJumpPower = true char.Humanoid.JumpPower += 10 end end
+	if input.KeyCode == Enum.KeyCode.L then if char and char:FindFirstChild("Humanoid") then char.Humanoid.JumpPower = 50 end end
+	
+	-- Utility Keys
+	if input.KeyCode == Enum.KeyCode.T then teleportToMouse() end
+	if input.KeyCode == Enum.KeyCode.H then fullHealth() end
+	if input.KeyCode == Enum.KeyCode.U then flySpeed += 10 end
+	if input.KeyCode == Enum.KeyCode.J then flySpeed = math.max(10, flySpeed - 10) end
+	
+	-- Visual Keys
+	if input.KeyCode == Enum.KeyCode.E then espEnabled = not espEnabled updateESP() end
+	
+	-- Spectate Attach
+	if input.KeyCode == Enum.KeyCode.P then 
+		if spectateTarget then resetAttachments("back") end 
+	end
 end)
