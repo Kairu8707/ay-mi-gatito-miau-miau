@@ -26,9 +26,13 @@ local flying = false
 local noclip = false
 local spectateTarget = nil
 local attachBack = false
+local attachFront = false
+local attachLeft = false
+local attachRight = false
 local flySpeed = 80
 local infJump = false
 local espEnabled = false
+local rapidHeal = false -- NEW STATE
 
 local bv, bg, flyConnection
 local espFolder = Instance.new("Folder", targetParent)
@@ -38,7 +42,7 @@ espFolder.Name = "RogueESP"
 -- MODERN UI SETUP
 -------------------------------------------------
 local gui = Instance.new("ScreenGui", targetParent)
-gui.Name = "RogueHub_V5"
+gui.Name = "RogueHub_V8"
 gui.ResetOnSpawn = false
 
 local mainFrame = Instance.new("Frame", gui)
@@ -173,6 +177,33 @@ local function teleportToMouse()
 	if root then root.CFrame = CFrame.new(mouse.Hit.Position + Vector3.new(0, 5, 0)) end
 end
 
+local function fullHealth()
+	if char and char:FindFirstChildOfClass("Humanoid") then
+		local hum = char:FindFirstChildOfClass("Humanoid")
+		hum.Health = hum.MaxHealth
+	end
+end
+
+-- RAPID HEAL LOOP
+task.spawn(function()
+	while true do
+		if rapidHeal and char and char:FindFirstChildOfClass("Humanoid") then
+			local hum = char:FindFirstChildOfClass("Humanoid")
+			if hum.Health < hum.MaxHealth then
+				hum.Health = math.min(hum.MaxHealth, hum.Health + 3)
+			end
+		end
+		task.wait(0.25)
+	end
+end)
+
+local function resetAttachments(except)
+	if except ~= "back" then attachBack = false end
+	if except ~= "front" then attachFront = false end
+	if except ~= "left" then attachLeft = false end
+	if except ~= "right" then attachRight = false end
+end
+
 local function startFly()
 	local root = char:FindFirstChild("HumanoidRootPart")
 	if not root then return end
@@ -230,6 +261,15 @@ makeButton("Reset WalkSpeed (B)", function() char.Humanoid.WalkSpeed = 16 end, 1
 makeButton("JumpPower +10 (K)", function() char.Humanoid.UseJumpPower = true char.Humanoid.JumpPower += 10 end, 16)
 makeButton("Reset Jump (L)", function() char.Humanoid.JumpPower = 50 end, 17)
 
+createSection("Character", 18)
+makeButton("Refill Health (H)", fullHealth, 19)
+local rhBtn = makeButton("Rapid Heal: OFF", function() end, 19.5)
+rhBtn.MouseButton1Click:Connect(function()
+	rapidHeal = not rapidHeal
+	rhBtn.Text = "Rapid Heal: " .. (rapidHeal and "ON" or "OFF")
+	rhBtn.TextColor3 = rapidHeal and Color3.fromRGB(0, 255, 150) or Color3.new(0.9, 0.9, 0.9)
+end)
+
 createSection("Utilities & FOV", 20)
 makeButton("Teleport To Mouse (T)", teleportToMouse, 21)
 makeButton("Increase Fly Speed (U)", function() flySpeed += 10 end, 22)
@@ -268,7 +308,11 @@ spectateScroll.CanvasSize = UDim2.new(0,0,0,0)
 Instance.new("UIListLayout", spectateScroll).Padding = UDim.new(0, 2)
 
 specListBtn.MouseButton1Click:Connect(function() specSubFrame.Visible = not specSubFrame.Visible end)
-makeButton("Attach To Back (P)", function() if spectateTarget then attachBack = not attachBack end end, 43)
+
+makeButton("Attach To Back (P)", function() if spectateTarget then resetAttachments("back") attachBack = not attachBack end end, 43)
+makeButton("Attach To Front", function() if spectateTarget then resetAttachments("front") attachFront = not attachFront end end, 44)
+makeButton("Attach Left", function() if spectateTarget then resetAttachments("left") attachLeft = not attachLeft end end, 45)
+makeButton("Attach Right", function() if spectateTarget then resetAttachments("right") attachRight = not attachRight end end, 46)
 
 -------------------------------------------------
 -- SPECTATE & SEARCH LOGIC
@@ -321,10 +365,20 @@ RunService.Stepped:Connect(function()
 end)
 
 RunService.RenderStepped:Connect(function()
-	if attachBack and spectateTarget and spectateTarget.Character then
+	if spectateTarget and spectateTarget.Character then
 		local root = char:FindFirstChild("HumanoidRootPart")
 		local targetRoot = spectateTarget.Character:FindFirstChild("HumanoidRootPart")
-		if root and targetRoot then root.CFrame = targetRoot.CFrame * CFrame.new(0, 0, 2) end
+		if root and targetRoot then
+			if attachBack then
+				root.CFrame = targetRoot.CFrame * CFrame.new(0, 0, 3)
+			elseif attachFront then
+				root.CFrame = targetRoot.CFrame * CFrame.new(0, 0, -3)
+			elseif attachLeft then
+				root.CFrame = targetRoot.CFrame * CFrame.new(-4, 0, 0)
+			elseif attachRight then
+				root.CFrame = targetRoot.CFrame * CFrame.new(4, 0, 0)
+			end
+		end
 	end
 end)
 
@@ -335,7 +389,7 @@ UIS.JumpRequest:Connect(function()
 end)
 
 -------------------------------------------------
--- UPDATED HOTKEYS
+-- HOTKEYS
 -------------------------------------------------
 UIS.InputBegan:Connect(function(input, gp)
 	if gp then return end
@@ -345,11 +399,14 @@ UIS.InputBegan:Connect(function(input, gp)
 	if input.KeyCode == Enum.KeyCode.T then teleportToMouse() end
 	if input.KeyCode == Enum.KeyCode.G then infJump = not infJump end
 	if input.KeyCode == Enum.KeyCode.E then espEnabled = not espEnabled updateESP() end
+	if input.KeyCode == Enum.KeyCode.H then fullHealth() end
 	if input.KeyCode == Enum.KeyCode.V then char.Humanoid.WalkSpeed += 10 end
 	if input.KeyCode == Enum.KeyCode.B then char.Humanoid.WalkSpeed = 16 end
 	if input.KeyCode == Enum.KeyCode.K then char.Humanoid.UseJumpPower = true char.Humanoid.JumpPower += 10 end
 	if input.KeyCode == Enum.KeyCode.L then char.Humanoid.JumpPower = 50 end
-	if input.KeyCode == Enum.KeyCode.P then attachBack = not attachBack end
+	if input.KeyCode == Enum.KeyCode.P then 
+		if spectateTarget then resetAttachments("back") attachBack = not attachBack end 
+	end
 	if input.KeyCode == Enum.KeyCode.U then flySpeed += 10 end
 	if input.KeyCode == Enum.KeyCode.J then flySpeed = math.max(10, flySpeed - 10) end
 end)
