@@ -32,7 +32,7 @@ local attachRight = false
 local flySpeed = 80
 local infJump = false
 local espEnabled = false
-local rapidHeal = false -- NEW STATE
+local rapidHeal = false 
 
 local bv, bg, flyConnection
 local espFolder = Instance.new("Folder", targetParent)
@@ -42,8 +42,27 @@ espFolder.Name = "RogueESP"
 -- MODERN UI SETUP
 -------------------------------------------------
 local gui = Instance.new("ScreenGui", targetParent)
-gui.Name = "RogueHub_V8"
+gui.Name = "RogueHub_V9"
 gui.ResetOnSpawn = false
+
+-------------------------------------------------
+-- DANGER SENSE UI
+-------------------------------------------------
+local dangerSenseEnabled = false
+local dangerDistance = 75 -- Change this to increase/decrease the detection radius
+
+local dangerLabel = Instance.new("TextLabel", gui)
+dangerLabel.Name = "DangerSenseLabel"
+dangerLabel.Size = UDim2.new(0, 400, 0, 50)
+dangerLabel.Position = UDim2.new(0.5, -200, 0.1, 0) -- Near the top center of the screen
+dangerLabel.BackgroundTransparency = 1
+dangerLabel.Font = Enum.Font.GothamBold
+dangerLabel.TextSize = 22
+dangerLabel.TextColor3 = Color3.fromRGB(255, 50, 50)
+dangerLabel.TextStrokeTransparency = 0
+dangerLabel.TextStrokeColor3 = Color3.new(0, 0, 0)
+dangerLabel.Text = ""
+dangerLabel.Visible = false
 
 local mainFrame = Instance.new("Frame", gui)
 mainFrame.Size = UDim2.new(0, 250, 0, 500)
@@ -184,7 +203,7 @@ local function fullHealth()
 	end
 end
 
--- RAPID HEAL LOOP
+-- RAPID HEAL LOOP (Updated to 0.05s)
 task.spawn(function()
 	while true do
 		if rapidHeal and char and char:FindFirstChildOfClass("Humanoid") then
@@ -193,7 +212,7 @@ task.spawn(function()
 				hum.Health = math.min(hum.MaxHealth, hum.Health + 3)
 			end
 		end
-		task.wait(0.25)
+		task.wait(0.05)
 	end
 end)
 
@@ -280,6 +299,18 @@ makeButton("Reset FOV", function() workspace.CurrentCamera.FieldOfView = 70 end,
 createSection("Visuals", 30)
 makeButton("Player ESP (E)", function() espEnabled = not espEnabled updateESP() end, 31)
 
+local dangerBtn = makeButton("Danger Sense: OFF", function() end, 32)
+dangerBtn.MouseButton1Click:Connect(function()
+	dangerSenseEnabled = not dangerSenseEnabled
+	dangerBtn.Text = "Danger Sense: " .. (dangerSenseEnabled and "ON" or "OFF")
+	dangerBtn.TextColor3 = dangerSenseEnabled and Color3.fromRGB(255, 50, 50) or Color3.new(0.9, 0.9, 0.9)
+	
+	if not dangerSenseEnabled then 
+		dangerLabel.Visible = false 
+		dangerLabel.Text = "" 
+	end
+end)
+
 createSection("Spectate Players", 40)
 local specListBtn = makeButton("View Player List", function() end, 41)
 local specSubFrame = Instance.new("Frame", container)
@@ -290,10 +321,12 @@ specSubFrame.Visible = false
 
 Instance.new("UIListLayout", specSubFrame).Padding = UDim.new(0, 5)
 
+-- Cleaned up Search Box
 local searchBox = Instance.new("TextBox", specSubFrame)
 searchBox.Size = UDim2.new(1, 0, 0, 25)
 searchBox.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 searchBox.TextColor3 = Color3.new(1, 1, 1)
+searchBox.Text = "" -- FIXED: Removed default "TextBox" text
 searchBox.PlaceholderText = "Search players..."
 searchBox.Font = Enum.Font.Gotham
 searchBox.TextSize = 12
@@ -365,6 +398,7 @@ RunService.Stepped:Connect(function()
 end)
 
 RunService.RenderStepped:Connect(function()
+	-- Original Spectate Logic
 	if spectateTarget and spectateTarget.Character then
 		local root = char:FindFirstChild("HumanoidRootPart")
 		local targetRoot = spectateTarget.Character:FindFirstChild("HumanoidRootPart")
@@ -378,6 +412,34 @@ RunService.RenderStepped:Connect(function()
 			elseif attachRight then
 				root.CFrame = targetRoot.CFrame * CFrame.new(4, 0, 0)
 			end
+		end
+	end
+	
+	-- New Danger Sense Logic
+	if dangerSenseEnabled and char and char:FindFirstChild("HumanoidRootPart") then
+		local myRoot = char.HumanoidRootPart
+		local closestPlayer = nil
+		local closestDist = dangerDistance
+
+		-- Loop through players to find the closest one within dangerDistance
+		for _, plr in pairs(Players:GetPlayers()) do
+			if plr ~= player and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
+				local targetRoot = plr.Character.HumanoidRootPart
+				local dist = (myRoot.Position - targetRoot.Position).Magnitude
+				
+				if dist < closestDist then
+					closestDist = dist
+					closestPlayer = plr
+				end
+			end
+		end
+
+		-- Update the label if someone is near
+		if closestPlayer then
+			dangerLabel.Text = "⚠️ DANGER: " .. closestPlayer.Name .. " is " .. math.floor(closestDist) .. " studs away! ⚠️"
+			dangerLabel.Visible = true
+		else
+			dangerLabel.Visible = false
 		end
 	end
 end)
